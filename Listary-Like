@@ -1,0 +1,220 @@
+/*
+    程序: Listary_Like
+    作用: ahk实现listary中打开开启中文件夹清单以及进行跳转
+    作者: 改自网友Kawvin
+    使用方法：鼠标中键
+    脚本说明:
+        0. 鼠标中键弹出菜单
+        1. 在保存/打开对话框中点击中键，弹出现打开文件夹清单，点击可以更换对话框到相应路径
+        2. 在非保存/打开对话框中点击中键，弹出常用文件夹清单，可以用资源管理器打开相应路径
+           常用文件夹清单外置在脚本同目录内的fav.txt文件中
+*/
+
+#SingleInstance,Force
+
+ ;定义主要变量内容
+history=%A_ScriptDir%\history.txt
+application=%A_ScriptDir%\application.txt
+
+Return
+$MButton::
+    ;生成菜单
+    ;添加菜单--目录
+    FileEncoding, UTF-8
+    FileRead, MostUsedDir, fav.txt
+
+    HKN:=0
+    HKStr:="ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
+    Menu, MyMenu, Add  ; 添加分隔线.
+    Menu, MyMenu,  DeleteAll ; 清空菜单项
+
+    WinGet, this_id,ID, A
+    WinGetTitle, this_title, ahk_id %this_id%
+    WinGetClass,this_class,ahk_id %this_id%
+
+    if(this_class="#32770") { ;保存/打开对话框
+        If(instr(this_title,"存") or instr(this_title,"文件") or instr(this_title,"开") or instr(this_title,"Open") or instr(this_title,"開")) {
+            ;获取Explorer打开的目录，并添加到dir数组
+            for oExplore in ComObjCreate("Shell.Application").Windows
+            {  
+                OutDir:=oExplore.LocationURL    
+                if (OutDir="") { ;剔除 资源管理器显示的 "库" 以及IE网页
+                    MsgBox, 不能打开我的电脑窗口
+                    Menu, MyMenu, Delete, 【当前打开路径】
+                    Exit for
+                }else if(instr(OutDir,"http")){ ;剔除IE
+
+                }else {
+                    ;获取打开的目录，并添加到dir数组
+                    Menu, MyMenu, Add, 【当前打开路径】, MenuHandler
+                    Menu, MyMenu, Disable, 【当前打开路径】
+                    HKN+=1
+                    HKTem:=HKN<37?"&" . substr(HKStr,HKN,1) . ") ":""
+                    MenuItem:=HKTem . OutDir
+                    Menu, MyMenu, Add, %MenuItem%, MenuHandler
+                }
+            }
+            Menu, MyMenu, Add   ;添加分隔线
+        }
+    }else{
+
+
+        ;遍历【常用路径】
+        Menu, MyMenu, Add, 【常用资料】, MenuHandler
+        Menu, MyMenu, Disable, 【常用资料】
+        loop,parse,MostUsedDir,"`n"
+        {
+            HKN+=1
+            HKTem:=HKN<37?"&" . substr(HKStr,HKN,1) . ") ":""
+            MenuItem:=HKTem .  LTrim(RegExReplace(RegExReplace(A_LoopField, ".*\\",""),"\.[^\.]+$",""))
+            Menu, MyMenu, Add, %MenuItem%, MenuHandler
+        }
+    }
+
+    ;显示菜单
+    CoordMode, MyMenu
+    Menu, MyMenu, Show, ;600, 500
+return
+;}
+
+MenuHandler:    ;执行菜单项  ;{
+    if (substr(A_ThisMenuItem,1,1)="&")
+        T_ThisMenuItem:=substr(A_ThisMenuItem,5)
+    if (instr(T_ThisMenuItem,".exe")){
+        ;~ WinActivate,ahk_exe %T_ThisMenuItem%
+        try {
+            RunOrActivateProgram(T_ThisMenuItem)
+        }catch{
+            MsgBox, 16,, 本计算机上无此程序!
+        }
+    }else {
+        WinGet, this_id,ID, A
+        WinGetTitle, this_title, ahk_id %this_id%
+        WinGetClass,this_class,ahk_id %this_id%
+        if(this_class="#32770") { ;保存/打开对话框
+            If(instr(this_title,"存") or instr(this_title,"文件")) {
+                ChangePath(T_ThisMenuItem,this_id)   
+            }else if(instr(this_title,"开") or instr(this_title,"Open")) {
+                ChangePath(T_ThisMenuItem,this_id)   
+            }
+        } else  {  ;普通窗口
+            try{
+                FileEncoding, UTF-8
+                Loop, Read, fav.txt
+                {
+                    if InStr(A_LoopReadLine, T_ThisMenuItem){
+                        run, %A_LoopReadLine%
+                        Break
+                    }
+                }
+;                loop,parse,MostUsedDir,"`n"
+;                {
+;                    if InStr(A_LoopField, T_ThisMenuItem){
+;                        ;Msgbox, %A_LoopField%
+;                        run, % Regexreplace(A_LoopField,"`n","")
+;                         Break
+;                    }
+;                }
+            } catch e {
+                MsgBox % "Error in " e.What ", which was called at line " e.Line  "`n" e.Message  "`n" e.Extra
+            }
+        }
+    }
+return
+;}
+
+OpenPath(_dir){ ;只是打开路径
+    Run,"%_dir%"  
+}
+
+OpenAndSelect(){
+
+}
+
+;Change "Edit2" to "Edit1"
+ChangePath(_dir,this_id){
+    WinActivate,ahk_id %this_id%
+    ControlFocus,ReBarWindow321,ahk_id %this_id%
+    ControlSend,ReBarWindow321,{f4},ahk_id %this_id%
+    Loop{
+        ControlFocus,Edit1,ahk_id %this_id%
+        ControlGetFocus,f,ahk_id %this_id%
+        if A_index>50 
+            break
+    }until (f="Edit1")
+    ControlSetText,edit1,%_dir%,ahk_id %this_id%
+    ControlSend,edit1,{Enter},ahk_id %this_id%
+}
+
+Log(debugstr){
+    global
+    FileAppend, %debugstr%`n, %history%
+    return
+}
+
+Log2(debugstr,file){
+    FileAppend, %debugstr%`n, %file%
+    return
+}
+
+getHistory(history){
+    ;获取最近使用的top10路径
+    a := []
+    b =
+    Loop, read, %history%
+    {
+        last_line := A_LoopReadLine  ; 当循环结束时, 这里会保持最后一行的内容.
+        if !a["" last_line]
+            a["" last_line] := 1
+        else
+            a["" last_line] += 1
+    }
+    for c,d in a
+    {
+        d2 := SubStr("00000", 1, 5-strlen(d)) d
+        str := d2 "_" c
+        b .= b ? "`n" str : str
+    }
+    Sort, b, R
+    e := StrSplit(b,"`n","`r")
+    f =
+    loop 10
+        f .= f ? "`n" e[A_index] : e[A_index]
+    return %f%
+}
+
+getExePath(){
+    ;~ 打开当前激活窗口的exe程序所在目录
+    ;~ for process in ComObjGet("winmgmts:").ExecQuery("Select * from Win32_Process")
+      ;~ WinGet, _ProcessPath, ProcessPath, A  
+      ;~ Run,% "Explorer.exe /select, " _ProcessPath   
+      ;~ return _ProcessPath
+    WinGet, id, list
+    Loop, %id%
+    {
+      this_id := id%A_Index%
+      WinGet, pp, ProcessPath, ahk_id %this_id%
+      out .= pp "`n"
+    }
+    ;~ MsgBox, % out
+    return out
+}
+
+RunOrActivateProgram(Target,WinTitle=""){
+    SplitPath,Target,TargetNameOnly
+    Process,Exist,%TargetNameOnly%
+    If ErrorLevel>0
+        PID=%ErrorLevel%
+    Else
+        Run,%Target%,,,PID
+    If WinTitle<>
+    {
+        SetTitleMatchMode,2
+        WinWait,%WinTitle%,,3
+        WinActivate,%WinTitle%
+    }Else{
+        WinWait,ahk_pid%PID%,,3
+        WinActivate,ahk_pid%PID%
+    }
+    Return
+}
